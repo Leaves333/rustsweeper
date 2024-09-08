@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 console = "0.15.8"
 dialoguer = "0.11.0"
+k_board = { version = "1.2.5", features = ["standar", "f", "alt_lower_letter", "ctrl_lower_letter", "lower_letter"] }

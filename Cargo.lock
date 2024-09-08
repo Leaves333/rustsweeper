@@ -63,6 +63,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8c02a5121d4ea3eb16a80748c74f5549a5665e4c21333c6098f283870fbdea6"
 
 [[package]]
+name = "k_board"
+version = "1.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d691a7457aa11ac15d6274aa5cb8e72383c8314662b2e3500a0bfdfa4f58b30"
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -123,6 +129,7 @@ version = "0.1.0"
 dependencies = [
  "console",
  "dialoguer",
+ "k_board",
 ]
 
 [[package]]
