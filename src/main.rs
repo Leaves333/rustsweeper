@@ -1,7 +1,7 @@
 use console::*;
 use k_board::{keyboard::Keyboard, keys::Keys};
 use rand::seq::SliceRandom;
-use std::cmp::min;
+use std::{cmp::min, usize};
 
 const BOARD_SIZE_X: u16 = 15;
 const BOARD_SIZE_Y: u16 = 15;
@@ -53,6 +53,12 @@ fn main() {
             }
             Keys::Right | Keys::Char('l') => coords[0] = min(BOARD_SIZE_X - 1, coords[0] + 1),
             Keys::Escape | Keys::Char('q') => break,
+            Keys::Enter | Keys::Char('d') => {
+                board[coords[1] as usize][coords[0] as usize].status = Status::Cleared
+            }
+            Keys::Char('f') => {
+                board[coords[1] as usize][coords[0] as usize].status = Status::Flagged
+            }
             _ => {}
         }
         display(&board, coords[0], coords[1]);
@@ -74,7 +80,7 @@ fn display(board: &Vec<Vec<Cell>>, x: u16, y: u16) {
             let mut target_style = match cell.status {
                 Status::Unknown => Style::new().bold().white(),
                 Status::Flagged => Style::new().bold().red(),
-                Status::Cleared => Style::new().red(),
+                Status::Cleared => Style::new().white(),
             };
             if i == y && j == x {
                 target_style = target_style.reverse();
@@ -83,7 +89,35 @@ fn display(board: &Vec<Vec<Cell>>, x: u16, y: u16) {
             let target_char = match cell.status {
                 Status::Unknown => '#',
                 Status::Flagged => 'F',
-                Status::Cleared => '.',
+                Status::Cleared => {
+                    let i = i as i32;
+                    let j = j as i32;
+                    let mut adjacent_locations: Vec<i32> = Vec::new();
+                    for dx in -1..1 as i32 {
+                        for dy in -1..1 as i32 {
+                            adjacent_locations.push((i + dy) * BOARD_SIZE_Y as i32 + j + dx);
+                        }
+                    }
+
+                    let adjacent_mines = adjacent_locations
+                        .iter()
+                        .copied()
+                        .filter(|x| *x >= 0 && *x < (BOARD_SIZE_X * BOARD_SIZE_Y) as i32)
+                        .map(|x| x as u16)
+                        .filter(|x| {
+                            board[(x / BOARD_SIZE_Y) as usize][(x % BOARD_SIZE_Y) as usize].mine
+                        })
+                        .count();
+
+                    if adjacent_mines == 0 {
+                        '.'
+                    } else {
+                        format!("{}", adjacent_mines)
+                            .chars()
+                            .next()
+                            .expect("expected char")
+                    }
+                }
             };
             let formatted_char = format!("{}", target_style.apply_to(&target_char));
             line_to_print += &formatted_char;
