@@ -5,13 +5,20 @@ use std::{char, cmp::min, usize};
 
 const BOARD_SIZE_X: u16 = 15;
 const BOARD_SIZE_Y: u16 = 15;
-const NUM_MINES: u16 = 50;
+const NUM_MINES: u16 = 20;
 
 #[derive(Clone, PartialEq)]
 enum Status {
     Cleared,
     Flagged,
     Unknown,
+}
+
+#[derive(PartialEq)]
+enum GameProgress {
+    Lose,
+    //Win,
+    InProgress,
 }
 
 #[derive(Clone)]
@@ -47,20 +54,20 @@ fn main() {
         vec![vec!['.'; BOARD_SIZE_X as usize]; BOARD_SIZE_Y as usize];
     for i in 0..BOARD_SIZE_Y {
         for j in 0..BOARD_SIZE_X {
-            let mut adjacent_locations: Vec<i32> = Vec::new();
+            let mut adjacent_locations: Vec<(i32, i32)> = Vec::new();
             for dx in -1..=1 as i32 {
                 for dy in -1..=1 as i32 {
-                    adjacent_locations
-                        .push(((i as i32 + dy) * BOARD_SIZE_Y as i32) + j as i32 + dx);
+                    adjacent_locations.push((j as i32 + dx, i as i32 + dy));
                 }
             }
 
             let adjacent_mines = adjacent_locations
                 .iter()
                 .copied()
-                .filter(|x| *x >= 0 && *x < (BOARD_SIZE_X * BOARD_SIZE_Y) as i32)
-                .map(|x| x as u16)
-                .filter(|x| board[(x / BOARD_SIZE_Y) as usize][(x % BOARD_SIZE_Y) as usize].mine)
+                .filter(|x| {
+                    x.0 >= 0 && x.0 < BOARD_SIZE_X as i32 && x.1 >= 0 && x.1 < BOARD_SIZE_Y as i32
+                })
+                .filter(|x| board[x.1 as usize][x.0 as usize].mine)
                 .count();
 
             if adjacent_mines != 0 {
@@ -74,7 +81,13 @@ fn main() {
 
     // initial display of game state
     let mut coords: Vec<u16> = vec![0; 2];
-    display(&board, &board_char, coords[0], coords[1]);
+    display(
+        &board,
+        &board_char,
+        coords[0],
+        coords[1],
+        GameProgress::InProgress,
+    );
 
     // main game loop: repeatedly grab keyboard input and update display
     for key in Keyboard::new() {
@@ -94,7 +107,16 @@ fn main() {
             Keys::Enter | Keys::Char('d') => {
                 match clear(&mut board, &board_char, coords[0], coords[1]) {
                     Ok(_) => {}
-                    Err(_) => {}
+                    Err(_) => {
+                        display(
+                            &board,
+                            &board_char,
+                            coords[0],
+                            coords[1],
+                            GameProgress::InProgress,
+                        );
+                        break;
+                    }
                 }
             }
 
@@ -104,7 +126,13 @@ fn main() {
             // match remaining keys, do nothing
             _ => {}
         }
-        display(&board, &board_char, coords[0], coords[1]);
+        display(
+            &board,
+            &board_char,
+            coords[0],
+            coords[1],
+            GameProgress::InProgress,
+        );
         println!("{:?}", key);
     }
 }
@@ -124,6 +152,11 @@ fn clear(
     x: u16,
     y: u16,
 ) -> Result<String, String> {
+    // check that cell is still unknown
+    if board[y as usize][x as usize].status != Status::Unknown {
+        return Ok("cell already cleared/flagged".to_string());
+    }
+
     // return error if you hit a mine
     if board[y as usize][x as usize].mine {
         return Err("oops you hit a mine".to_string());
@@ -145,9 +178,9 @@ fn clear(
             for (dx, dy) in CHANGES {
                 let new_x = top.0 as i32 + dx;
                 let new_y = top.1 as i32 + dy;
-                if new_x > 0
+                if new_x >= 0
                     && new_x < BOARD_SIZE_X as i32
-                    && new_y > 0
+                    && new_y >= 0
                     && new_y < BOARD_SIZE_Y as i32
                 {
                     stack.push((new_x as usize, new_y as usize));
@@ -159,7 +192,13 @@ fn clear(
     Ok("successfully cleared cells".to_string())
 }
 
-fn display(board: &Vec<Vec<Cell>>, board_char: &Vec<Vec<char>>, x: u16, y: u16) {
+fn display(
+    board: &Vec<Vec<Cell>>,
+    board_char: &Vec<Vec<char>>,
+    x: u16,
+    y: u16,
+    game_progress: GameProgress,
+) {
     let term = Term::stdout();
     let _ = term.clear_screen();
     let _ = term.write_line("messing around with k_board:");
@@ -184,7 +223,7 @@ fn display(board: &Vec<Vec<Cell>>, board_char: &Vec<Vec<char>>, x: u16, y: u16) 
                 Status::Flagged => 'F',
                 Status::Cleared => board_char[i as usize][j as usize],
             };
-            if cell.mine {
+            if game_progress == GameProgress::Lose && cell.mine {
                 target_char = 'x';
             }
 
@@ -192,5 +231,10 @@ fn display(board: &Vec<Vec<Cell>>, board_char: &Vec<Vec<char>>, x: u16, y: u16) 
             line_to_print += &formatted_char;
         }
         let _ = term.write_line(&line_to_print);
+    }
+
+    if game_progress == GameProgress::Lose {
+        let _ = term.write_line("");
+        let _ = term.write_line("oops you hit the mine");
     }
 }
