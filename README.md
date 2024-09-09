@@ -3,7 +3,7 @@
 (hopefully) a terminal minesweeper clone written in rust
 
 ## todo:
-- [ ] find out what libraries to use
+- [x] find out what libraries to use
 - [ ] display board to terminal
 - [ ] implement controls: moving (hjkl), flags, clear
 - [ ] implement game logic
