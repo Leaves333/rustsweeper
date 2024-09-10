@@ -3,8 +3,8 @@ use k_board::{keyboard::Keyboard, keys::Keys};
 use rand::seq::SliceRandom;
 use std::{char, cmp::min, usize};
 
-const BOARD_SIZE_X: u16 = 15;
-const BOARD_SIZE_Y: u16 = 15;
+const BOARD_SIZE_X: u16 = 20;
+const BOARD_SIZE_Y: u16 = 10;
 const NUM_MINES: u16 = 20;
 
 #[derive(Clone, PartialEq)]
@@ -17,8 +17,15 @@ enum Status {
 #[derive(PartialEq)]
 enum GameProgress {
     Lose,
-    //Win,
+    Win,
     InProgress,
+}
+
+#[derive(PartialEq)]
+enum ClearResult {
+    Ok,
+    Mine,
+    Win,
 }
 
 #[derive(Clone)]
@@ -41,12 +48,12 @@ fn main() {
                 mine: false,
                 status: Status::Unknown
             };
-            BOARD_SIZE_Y as usize
+            BOARD_SIZE_X as usize
         ];
-        BOARD_SIZE_X as usize
+        BOARD_SIZE_Y as usize
     ];
     for x in mine_locations {
-        board[(x / BOARD_SIZE_X) as usize][(x % BOARD_SIZE_Y) as usize].mine = true;
+        board[(x / BOARD_SIZE_X) as usize][(x % BOARD_SIZE_X) as usize].mine = true;
     }
 
     // calculate adjacent mines for each cell
@@ -106,15 +113,19 @@ fn main() {
             // clear selected cell
             Keys::Enter | Keys::Char('d') => {
                 match clear(&mut board, &board_char, coords[0], coords[1]) {
-                    Ok(_) => {}
-                    Err(_) => {
+                    ClearResult::Ok => {}
+                    ClearResult::Mine => {
                         display(
                             &board,
                             &board_char,
                             coords[0],
                             coords[1],
-                            GameProgress::InProgress,
+                            GameProgress::Lose,
                         );
+                        break;
+                    }
+                    ClearResult::Win => {
+                        display(&board, &board_char, coords[0], coords[1], GameProgress::Win);
                         break;
                     }
                 }
@@ -133,7 +144,6 @@ fn main() {
             coords[1],
             GameProgress::InProgress,
         );
-        println!("{:?}", key);
     }
 }
 
@@ -146,20 +156,15 @@ fn flag(board: &mut Vec<Vec<Cell>>, x: u16, y: u16) {
     };
 }
 
-fn clear(
-    board: &mut Vec<Vec<Cell>>,
-    board_char: &Vec<Vec<char>>,
-    x: u16,
-    y: u16,
-) -> Result<String, String> {
+fn clear(board: &mut Vec<Vec<Cell>>, board_char: &Vec<Vec<char>>, x: u16, y: u16) -> ClearResult {
     // check that cell is still unknown
     if board[y as usize][x as usize].status != Status::Unknown {
-        return Ok("cell already cleared/flagged".to_string());
+        return ClearResult::Ok;
     }
 
     // return error if you hit a mine
     if board[y as usize][x as usize].mine {
-        return Err("oops you hit a mine".to_string());
+        return ClearResult::Mine;
     }
 
     // dfs to recursively clear cells
@@ -189,7 +194,16 @@ fn clear(
         }
     }
 
-    Ok("successfully cleared cells".to_string())
+    // check if we've won
+    for row in board {
+        for cell in row {
+            if !cell.mine && cell.status != Status::Cleared {
+                return ClearResult::Ok;
+            }
+        }
+    }
+
+    ClearResult::Win
 }
 
 fn display(
@@ -201,6 +215,11 @@ fn display(
 ) {
     let term = Term::stdout();
     let _ = term.clear_screen();
+    match check_terminal_size(&term) {
+        Ok(_) => {}
+        Err(_) => return,
+    }
+
     let _ = term.write_line("messing around with k_board:");
     let _ = term.write_line("");
 
@@ -212,7 +231,14 @@ fn display(
             let mut target_style = match cell.status {
                 Status::Unknown => Style::new().bold().white(),
                 Status::Flagged => Style::new().bold().red(),
-                Status::Cleared => Style::new().white(),
+                Status::Cleared => match board_char[i as usize][j as usize] {
+                    '.' => Style::new().white(),
+                    '1' => Style::new().blue(),
+                    '2' => Style::new().green(),
+                    '3' => Style::new().red(),
+                    '4' => Style::new().magenta(),
+                    _ => Style::new().yellow(),
+                },
             };
             if i == y && j == x {
                 target_style = target_style.reverse();
@@ -223,18 +249,103 @@ fn display(
                 Status::Flagged => 'F',
                 Status::Cleared => board_char[i as usize][j as usize],
             };
+
             if game_progress == GameProgress::Lose && cell.mine {
+                target_style = target_style.bold().red();
                 target_char = 'x';
             }
 
             let formatted_char = format!("{}", target_style.apply_to(&target_char));
             line_to_print += &formatted_char;
         }
-        let _ = term.write_line(&line_to_print);
+        let padded_str = pad_str(
+            &line_to_print,
+            term.size().1 as usize,
+            Alignment::Center,
+            None,
+        );
+        let _ = term.write_line(&padded_str);
     }
 
     if game_progress == GameProgress::Lose {
         let _ = term.write_line("");
         let _ = term.write_line("oops you hit the mine");
+    } else if game_progress == GameProgress::Win {
+        let _ = term.write_line("");
+        let _ = term.write_line("hooray you're a winner!!!");
     }
+}
+
+fn check_terminal_size(term: &Term) -> Result<String, String> {
+    let (term_y, term_x) = term.size();
+    const VERTICAL_PADDING: u16 = 4;
+    const HORIZONTAL_PADDING: u16 = 1;
+    let required_x = BOARD_SIZE_X + HORIZONTAL_PADDING;
+    let required_y = BOARD_SIZE_Y + VERTICAL_PADDING;
+
+    if term_y < required_y || term_x < required_x {
+        // terminal is too small, print btop-esque info
+
+        // blank padding on top
+        let vertical_blank_lines = (term_y - 5) / 2;
+        for _ in 0..vertical_blank_lines {
+            let _ = term.write_line("");
+        }
+
+        // current terminal size info
+        let _ = term.write_line(&pad_str(
+            &format!("{}", style("terminal size too small:").bold()),
+            term_x as usize,
+            Alignment::Center,
+            None,
+        ));
+
+        let width_text = format!("{}", {
+            let term_x_string = format!("{}", term_x);
+            if term_x < required_x {
+                style(term_x_string).red().bold()
+            } else {
+                style(term_x_string).green()
+            }
+        });
+        let height_text = format!("{}", {
+            let term_y_string = format!("{}", term_y);
+            if term_y < required_y {
+                style(term_y_string).red().bold()
+            } else {
+                style(term_y_string).green()
+            }
+        });
+        let _ = term.write_line(&pad_str(
+            &("width = ".to_string() + &width_text + " height = " + &height_text),
+            term_x as usize,
+            Alignment::Center,
+            None,
+        ));
+
+        // blank line for padding
+        let _ = term.write_line("");
+
+        // expected terminal size info
+        let _ = term.write_line(&pad_str(
+            &format!("{}", style("required terminal size:").bold()),
+            term_x as usize,
+            Alignment::Center,
+            None,
+        ));
+        let _ = term.write_line(&pad_str(
+            &("width = ".to_string()
+                + &format!("{}", term_x)
+                + " height = "
+                + &format!("{}", term_y)),
+            term_x as usize,
+            Alignment::Center,
+            None,
+        ));
+
+        // return error back to the main function
+        return Err("terminal too small".to_string());
+    }
+
+    Ok("ok terminal size".to_string())
 }
