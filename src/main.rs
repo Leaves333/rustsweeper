@@ -3,8 +3,8 @@ use k_board::{keyboard::Keyboard, keys::Keys};
 use rand::seq::SliceRandom;
 use std::{char, cmp::min, usize};
 
-const BOARD_SIZE_X: u16 = 20;
-const BOARD_SIZE_Y: u16 = 10;
+const BOARD_SIZE_X: u16 = 21;
+const BOARD_SIZE_Y: u16 = 11;
 const NUM_MINES: u16 = 20;
 
 #[derive(Clone, PartialEq)]
@@ -220,8 +220,15 @@ fn display(
         Err(_) => return,
     }
 
-    let _ = term.write_line("messing around with k_board:");
+    let _ = term.hide_cursor();
+    let (term_y, term_x) = term.size();
     let _ = term.write_line("");
+    let title_string = &pad_str("minesweeper", term_x as usize, Alignment::Center, None);
+    let _ = term.write_line(&title_string);
+
+    for _ in 0..(((term_y - BOARD_SIZE_Y) / 2) - 1) {
+        let _ = term.write_line("");
+    }
 
     for i in 0..BOARD_SIZE_Y {
         let mut line_to_print: String = "".to_string();
@@ -258,12 +265,8 @@ fn display(
             let formatted_char = format!("{}", target_style.apply_to(&target_char));
             line_to_print += &formatted_char;
         }
-        let padded_str = pad_str(
-            &line_to_print,
-            term.size().1 as usize,
-            Alignment::Center,
-            None,
-        );
+
+        let padded_str = pad_str(&line_to_print, term_x as usize, Alignment::Center, None);
         let _ = term.write_line(&padded_str);
     }
 
@@ -278,7 +281,7 @@ fn display(
 
 fn check_terminal_size(term: &Term) -> Result<String, String> {
     let (term_y, term_x) = term.size();
-    const VERTICAL_PADDING: u16 = 4;
+    const VERTICAL_PADDING: u16 = 5;
     const HORIZONTAL_PADDING: u16 = 1;
     let required_x = BOARD_SIZE_X + HORIZONTAL_PADDING;
     let required_y = BOARD_SIZE_Y + VERTICAL_PADDING;
