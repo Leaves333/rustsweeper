@@ -1,11 +1,13 @@
 use console::*;
 use k_board::{keyboard::Keyboard, keys::Keys};
 use rand::seq::SliceRandom;
-use std::{char, cmp::min, usize};
+use std::{char, cmp::min, env, usize};
 
 const BOARD_SIZE_X: u16 = 21;
 const BOARD_SIZE_Y: u16 = 11;
 const NUM_MINES: u16 = 20;
+
+const INSTRUCTION_TEXT: &str = "arrow keys / hjkl: move cursor      d / enter: dig     f: flag";
 
 #[derive(Clone, PartialEq)]
 enum Status {
@@ -37,9 +39,9 @@ struct Cell {
 fn main() {
     // randomly decide which cells should be mines
     let total_cells = BOARD_SIZE_X * BOARD_SIZE_Y;
-    let mut all_locations: Vec<u16> = (0..total_cells).into_iter().collect();
-    all_locations.shuffle(&mut rand::thread_rng());
-    let mine_locations = &all_locations[0..NUM_MINES as usize];
+    let mut randomized_locations: Vec<u16> = (0..total_cells).into_iter().collect();
+    randomized_locations.shuffle(&mut rand::thread_rng());
+    let mine_locations = &randomized_locations[0..NUM_MINES as usize];
 
     // generate a 2d vector of cells
     let mut board: Vec<Vec<Cell>> = vec![
@@ -59,32 +61,10 @@ fn main() {
     // calculate adjacent mines for each cell
     let mut board_char: Vec<Vec<char>> =
         vec![vec!['.'; BOARD_SIZE_X as usize]; BOARD_SIZE_Y as usize];
-    for i in 0..BOARD_SIZE_Y {
-        for j in 0..BOARD_SIZE_X {
-            let mut adjacent_locations: Vec<(i32, i32)> = Vec::new();
-            for dx in -1..=1 as i32 {
-                for dy in -1..=1 as i32 {
-                    adjacent_locations.push((j as i32 + dx, i as i32 + dy));
-                }
-            }
+    board_char = calculate_adjacencies(&board, board_char);
 
-            let adjacent_mines = adjacent_locations
-                .iter()
-                .copied()
-                .filter(|x| {
-                    x.0 >= 0 && x.0 < BOARD_SIZE_X as i32 && x.1 >= 0 && x.1 < BOARD_SIZE_Y as i32
-                })
-                .filter(|x| board[x.1 as usize][x.0 as usize].mine)
-                .count();
-
-            if adjacent_mines != 0 {
-                board_char[i as usize][j as usize] = format!("{}", adjacent_mines)
-                    .chars()
-                    .next()
-                    .expect("expected char");
-            }
-        }
-    }
+    // hide the cursor at the start of game
+    let _ = Term::stdout().hide_cursor();
 
     // initial display of game state
     let mut coords: Vec<u16> = vec![0; 2];
@@ -97,6 +77,7 @@ fn main() {
     );
 
     // main game loop: repeatedly grab keyboard input and update display
+    let mut first_clear = true;
     for key in Keyboard::new() {
         match key {
             // directional controls
@@ -112,6 +93,30 @@ fn main() {
 
             // clear selected cell
             Keys::Enter | Keys::Char('d') => {
+                // prevent losing on the first click
+                if first_clear && board[coords[1] as usize][coords[0] as usize].mine {
+                    // remove the mine from the cursor
+                    board[coords[1] as usize][coords[0] as usize].mine = false;
+
+                    // move the mine to the next random spot that isn't a mine
+                    for i in NUM_MINES..(BOARD_SIZE_X * BOARD_SIZE_Y) {
+                        let loc = randomized_locations[i as usize];
+                        let cell = &mut board[(loc / BOARD_SIZE_X) as usize]
+                            [(loc % BOARD_SIZE_X) as usize];
+                        if !cell.mine {
+                            cell.mine = true;
+                            break;
+                        }
+                    }
+
+                    // recalculate mine adjacencies
+                    board_char = calculate_adjacencies(&board, board_char);
+                }
+
+                if first_clear {
+                    first_clear = false;
+                }
+
                 match clear(&mut board, &board_char, coords[0], coords[1]) {
                     ClearResult::Ok => {}
                     ClearResult::Mine => {
@@ -145,6 +150,44 @@ fn main() {
             GameProgress::InProgress,
         );
     }
+
+    // show cursor at the end of game
+    let _ = Term::stdout().show_cursor();
+}
+
+fn calculate_adjacencies(board: &Vec<Vec<Cell>>, mut board_char: Vec<Vec<char>>) -> Vec<Vec<char>> {
+    for i in 0..BOARD_SIZE_Y {
+        for j in 0..BOARD_SIZE_X {
+            // grab cells adjacent to current one
+            let mut adjacent_locations: Vec<(i32, i32)> = Vec::new();
+            for dx in -1..=1 as i32 {
+                for dy in -1..=1 as i32 {
+                    adjacent_locations.push((j as i32 + dx, i as i32 + dy));
+                }
+            }
+
+            // filter for number of mines
+            let adjacent_mines = adjacent_locations
+                .iter()
+                .copied()
+                .filter(|x| {
+                    x.0 >= 0 && x.0 < BOARD_SIZE_X as i32 && x.1 >= 0 && x.1 < BOARD_SIZE_Y as i32
+                })
+                .filter(|x| board[x.1 as usize][x.0 as usize].mine)
+                .count();
+
+            // convert found value to char
+            if adjacent_mines != 0 {
+                board_char[i as usize][j as usize] = format!("{}", adjacent_mines)
+                    .chars()
+                    .next()
+                    .expect("expected char");
+            } else {
+                board_char[i as usize][j as usize] = '.';
+            }
+        }
+    }
+    board_char
 }
 
 fn flag(board: &mut Vec<Vec<Cell>>, x: u16, y: u16) {
@@ -213,6 +256,7 @@ fn display(
     y: u16,
     game_progress: GameProgress,
 ) {
+    // initalize terminal and check for ok terminal size
     let term = Term::stdout();
     let _ = term.clear_screen();
     match check_terminal_size(&term) {
@@ -220,16 +264,17 @@ fn display(
         Err(_) => return,
     }
 
-    let _ = term.hide_cursor();
     let (term_y, term_x) = term.size();
-    let _ = term.write_line("");
-    let title_string = &pad_str("minesweeper", term_x as usize, Alignment::Center, None);
-    let _ = term.write_line(&title_string);
 
-    for _ in 0..(((term_y - BOARD_SIZE_Y) / 2) - 1) {
+    // top padding and title
+    for _ in 0..(((term_y - BOARD_SIZE_Y) / 2) - 2) {
         let _ = term.write_line("");
     }
+    let title_string = &pad_str("minesweeper", term_x as usize, Alignment::Center, None);
+    let _ = term.write_line(&title_string);
+    let _ = term.write_line("");
 
+    // display the board
     for i in 0..BOARD_SIZE_Y {
         let mut line_to_print: String = "".to_string();
         for j in 0..BOARD_SIZE_X {
@@ -270,20 +315,46 @@ fn display(
         let _ = term.write_line(&padded_str);
     }
 
-    if game_progress == GameProgress::Lose {
+    // bottom padding text
+    for _ in 0..(((term_y - BOARD_SIZE_Y) / 2) - 2) {
         let _ = term.write_line("");
-        let _ = term.write_line("oops you hit the mine");
-    } else if game_progress == GameProgress::Win {
-        let _ = term.write_line("");
-        let _ = term.write_line("hooray you're a winner!!!");
+    }
+
+    match game_progress {
+        GameProgress::Lose => {
+            let _ = term.write_line(&pad_str(
+                "oops you hit the mine",
+                term_x as usize,
+                Alignment::Center,
+                None,
+            ));
+        }
+        GameProgress::Win => {
+            let _ = term.write_line(&pad_str(
+                "hooray you're a winner!!!",
+                term_x as usize,
+                Alignment::Center,
+                None,
+            ));
+        }
+        GameProgress::InProgress => {
+            let _ = term.write_line(&pad_str(
+                INSTRUCTION_TEXT,
+                term_x as usize,
+                Alignment::Center,
+                None,
+            ));
+        }
     }
 }
 
 fn check_terminal_size(term: &Term) -> Result<String, String> {
     let (term_y, term_x) = term.size();
-    const VERTICAL_PADDING: u16 = 5;
-    const HORIZONTAL_PADDING: u16 = 1;
-    let required_x = BOARD_SIZE_X + HORIZONTAL_PADDING;
+
+    const VERTICAL_PADDING: u16 = 7;
+    const HORIZONTAL_PADDING: u16 = 2;
+    let required_x = std::cmp::max(BOARD_SIZE_X, measure_text_width(INSTRUCTION_TEXT) as u16)
+        + HORIZONTAL_PADDING;
     let required_y = BOARD_SIZE_Y + VERTICAL_PADDING;
 
     if term_y < required_y || term_x < required_x {
@@ -338,9 +409,9 @@ fn check_terminal_size(term: &Term) -> Result<String, String> {
         ));
         let _ = term.write_line(&pad_str(
             &("width = ".to_string()
-                + &format!("{}", term_x)
+                + &format!("{}", required_x)
                 + " height = "
-                + &format!("{}", term_y)),
+                + &format!("{}", required_y)),
             term_x as usize,
             Alignment::Center,
             None,
