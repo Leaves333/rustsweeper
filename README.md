@@ -4,9 +4,9 @@ a terminal minesweeper clone written in rust
 
 ![demo](https://github.com/Leaves333/rustsweeper/blob/main/sample_image.png)
 
-## installation
+## building from source
 
-clone the repository, change directory, and build and run from source
+clone the repository and build
 ```bash
 git clone https://github.com/Leaves333/rustsweeper.git
 cd rustsweeper
