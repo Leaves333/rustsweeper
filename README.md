@@ -2,10 +2,6 @@
 
 a terminal minesweeper clone written in rust
 
-comes with colors and a dynamic ui that resizes to fit your terminal
-
-built using console and k_board
-
 ![demo](https://github.com/Leaves333/rustsweeper/blob/main/sample_image.png)
 
 ## installation
